@@ -1,3 +1,4 @@
+console.log('Starting TemptMeet Backend...');
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -9,9 +10,12 @@ const User = require('./models/User');
 
 const app = express();
 const server = http.createServer(app);
+
+const allowedOrigins = ["https://temptmeet.vercel.app", "http://localhost:5173", "http://127.0.0.1:5173"];
+
 const io = new Server(server, {
     cors: {
-        origin: ["https://temptmeet.vercel.app", "http://localhost:5173"],
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
     }
@@ -21,15 +25,23 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-    origin: ["https://temptmeet.vercel.app", "http://localhost:5173"],
-    methods: ["GET", "POST"],
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    methods: ["GET", "POST", "OPTIONS"],
     credentials: true
 }));
 app.use(express.json());
 
 // Health Check
 app.get('/', (req, res) => {
-    res.send('TemptMeet Backend is running!');
+    res.status(200).send('TemptMeet Backend is running!');
 });
 
 // Database Connection
