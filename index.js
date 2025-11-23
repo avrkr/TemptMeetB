@@ -1,23 +1,109 @@
+console.log('Starting TemptMeet Backend...');
+require('dotenv').config();
 const express = require('express');
-const router = express.Router();
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
+const mongoose = require('mongoose');
+const apiRoutes = require('./routes/api');
+const User = require('./models/User');
 
-// Your API routes - no CORS needed here since it's applied globally
-router.get('/online-users', async (req, res) => {
-    try {
-        const onlineUsers = await User.find({ isOnline: true });
-        res.json({ count: onlineUsers.length, users: onlineUsers });
-    } catch (error) {
-        res.status(500).json({ error: 'Server error' });
+const app = express();
+const server = http.createServer(app);
+
+// Allow ALL origins
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Allow all origins
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
-router.get('/languages', async (req, res) => {
-    try {
-        const languages = ['English', 'Spanish', 'French', 'German', 'Japanese', 'Korean'];
-        res.json(languages);
-    } catch (error) {
-        res.status(500).json({ error: 'Server error' });
-    }
+const PORT = process.env.PORT || 5000;
+
+// Middleware - Allow ALL origins
+app.use(cors({
+    origin: "*", // Allow all origins
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true
+}));
+
+app.use(express.json());
+
+// Health Check
+app.get('/', (req, res) => {
+    res.status(200).send('TemptMeet Backend is running!');
 });
 
-module.exports = router;
+// Database Connection
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/temptmeet')
+    .then(() => console.log('MongoDB Connected'))
+    .catch(err => console.log('MongoDB Error:', err));
+
+// Routes
+app.use('/api', apiRoutes);
+
+// Socket.io Logic for Matching
+let waitingUsers = []; // Simple in-memory queue for demo
+
+io.on('connection', (socket) => {
+    console.log('User connected:', socket.id);
+
+    socket.on('join_queue', async (data) => {
+        const { interests, language, location } = data;
+
+        // Save user to DB as online
+        await User.create({
+            socketId: socket.id,
+            interests,
+            language,
+            location,
+            isOnline: true
+        });
+
+        // Simple Matching Logic
+        // Find a user in waitingUsers who matches language OR has common interest
+        const matchIndex = waitingUsers.findIndex(user =>
+            user.socketId !== socket.id &&
+            (user.language === language || user.interests.some(i => interests.includes(i)))
+        );
+
+        if (matchIndex !== -1) {
+            const partner = waitingUsers.splice(matchIndex, 1)[0];
+            const roomId = `${socket.id}-${partner.socketId}`;
+
+            socket.join(roomId);
+            io.to(partner.socketId).socketsJoin(roomId); // Make partner join
+
+            io.to(roomId).emit('match_found', { roomId });
+
+            // Notify both
+            io.to(socket.id).emit('partner_data', { socketId: partner.socketId });
+            io.to(partner.socketId).emit('partner_data', { socketId: socket.id });
+
+        } else {
+            waitingUsers.push({ socketId: socket.id, interests, language, location });
+        }
+    });
+
+    socket.on('send_message', (data) => {
+        socket.to(data.roomId).emit('receive_message', data);
+    });
+
+    socket.on('skip', () => {
+        // Logic to leave room and re-join queue would go here
+        // For now, just disconnect from room
+    });
+
+    socket.on('disconnect', async () => {
+        console.log('User disconnected:', socket.id);
+        waitingUsers = waitingUsers.filter(u => u.socketId !== socket.id);
+        await User.deleteMany({ socketId: socket.id }); // Cleanup
+    });
+});
+
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log('CORS enabled for ALL origins');
+});
