@@ -42,6 +42,14 @@ const UserSchema = new mongoose.Schema({
     totalTimeSpent: {
         type: Number, // in minutes
         default: 0
+    },
+    reputationScore: {
+        type: Number,
+        default: 100
+    },
+    reportsReceived: {
+        type: Number,
+        default: 0
     }
 }, {
     timestamps: true

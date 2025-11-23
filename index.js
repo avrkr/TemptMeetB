@@ -17,6 +17,9 @@ const __dirname = dirname(__filename);
 const app = express();
 const server = http.createServer(app);
 
+// Trust Proxy for Railway/Vercel
+app.set('trust proxy', 1);
+
 // Security Middleware
 app.use(helmet({
     crossOriginEmbedderPolicy: false,
