@@ -76,15 +76,30 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             io.to(partner.socketId).socketsJoin(roomId); // Make partner join
 
-            io.to(roomId).emit('match_found', { roomId });
+            // Notify both, specifying who is the initiator (to start WebRTC offer)
+            io.to(socket.id).emit('match_found', { roomId, initiator: true });
+            io.to(partner.socketId).emit('match_found', { roomId, initiator: false });
 
-            // Notify both
+            // Notify both of partner ID
             io.to(socket.id).emit('partner_data', { socketId: partner.socketId });
             io.to(partner.socketId).emit('partner_data', { socketId: socket.id });
 
         } else {
             waitingUsers.push({ socketId: socket.id, interests, language, location });
         }
+    });
+
+    // WebRTC Signaling Events
+    socket.on('offer', (data) => {
+        socket.to(data.roomId).emit('offer', data.offer);
+    });
+
+    socket.on('answer', (data) => {
+        socket.to(data.roomId).emit('answer', data.answer);
+    });
+
+    socket.on('ice-candidate', (data) => {
+        socket.to(data.roomId).emit('ice-candidate', data.candidate);
     });
 
     socket.on('send_message', (data) => {

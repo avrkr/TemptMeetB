@@ -2,29 +2,43 @@ const router = require('express').Router();
 const User = require('../models/User');
 const Report = require('../models/Report');
 
-// Get Dynamic Languages
-router.get('/languages', (req, res) => {
-    const languages = [
-        { code: 'en', name: 'English' },
-        { code: 'es', name: 'Spanish' },
-        { code: 'fr', name: 'French' },
-        { code: 'de', name: 'German' },
-        { code: 'hi', name: 'Hindi' },
-        { code: 'zh', name: 'Chinese' },
-        { code: 'jp', name: 'Japanese' }
-    ];
-    res.json(languages);
+// Get Dynamic Languages (Aggregated from active users or a standard list)
+router.get('/languages', async (req, res) => {
+    try {
+        // Get distinct languages from currently online users
+        const activeLanguages = await User.distinct('language', { isOnline: true });
+
+        // Standard list to ensure we always have options
+        const standardLanguages = [
+            { code: 'en', name: 'English' },
+            { code: 'es', name: 'Spanish' },
+            { code: 'fr', name: 'French' },
+            { code: 'de', name: 'German' },
+            { code: 'hi', name: 'Hindi' },
+            { code: 'zh', name: 'Chinese' },
+            { code: 'jp', name: 'Japanese' },
+            { code: 'ru', name: 'Russian' },
+            { code: 'pt', name: 'Portuguese' },
+            { code: 'ar', name: 'Arabic' }
+        ];
+
+        // Mark languages that are currently active
+        const response = standardLanguages.map(lang => ({
+            ...lang,
+            active: activeLanguages.includes(lang.code)
+        }));
+
+        res.json(response);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch languages' });
+    }
 });
 
 // Get Online Users Count
 router.get('/online-users', async (req, res) => {
     try {
-        // In a real app, count from DB or Redis. 
-        // Since we are using in-memory socket tracking for matching, 
-        // we can also query the DB if we are syncing them.
         const count = await User.countDocuments({ isOnline: true });
-        // Add a fake multiplier for "social proof" if count is low during dev
-        res.json({ count: Math.max(count, 12) });
+        res.json({ count });
     } catch (err) {
         res.status(500).json({ error: 'Server Error' });
     }
